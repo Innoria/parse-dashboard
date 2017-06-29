@@ -5,18 +5,23 @@
  * This source code is licensed under the license found in the LICENSE file in
  * the root directory of this source tree.
  */
-import AppsManager   from 'lib/AppsManager';
-import FlowFooter    from 'components/FlowFooter/FlowFooter.react';
-import history       from 'dashboard/history';
-import html          from 'lib/htmlString';
-import Icon          from 'components/Icon/Icon.react';
-import joinWithFinal from 'lib/joinWithFinal';
-import LiveReload    from 'components/LiveReload/LiveReload.react';
-import prettyNumber  from 'lib/prettyNumber';
-import React         from 'react';
-import styles        from 'dashboard/Apps/AppsIndex.scss';
-import { center }    from 'stylesheets/base.scss';
-import AppBadge      from 'components/AppBadge/AppBadge.react';
+import AppsManager                                                   from 'lib/AppsManager';
+import FlowFooter                                                    from 'components/FlowFooter/FlowFooter.react';
+import history                                                       from 'dashboard/history';
+import html                                                          from 'lib/htmlString';
+import Icon                                                          from 'components/Icon/Icon.react';
+import joinWithFinal                                                 from 'lib/joinWithFinal';
+import LiveReload                                                    from 'components/LiveReload/LiveReload.react';
+import prettyNumber                                                  from 'lib/prettyNumber';
+import React                                                         from 'react';
+import styles                                                        from 'dashboard/Apps/AppsIndex.scss';
+import { center }                                                    from 'stylesheets/base.scss';
+import AppBadge                                                      from 'components/AppBadge/AppBadge.react';
+import { Button, Form, FormGroup, Label, Input, 
+         FormText, Modal, ModalHeader, ModalBody, ModalFooter,
+         TabContent, TabPane, Nav, NavItem, NavLink }                from 'reactstrap';
+import ParseApp                                                      from 'lib/ParseApp';
+
 
 function dash(value, content) {
   if (value === undefined) {
@@ -89,10 +94,21 @@ let AppCard = ({
 }
 
 export default class AppsIndex extends React.Component {
-  constructor() {
-    super();
-    this.state = { search: '' };
+  constructor(props) {
+    super(props);
+    this.state = { 
+      search: '',
+      modal: true,
+      appName: 'APP_NAME',
+      appId: 'APP_ID',
+      masterKey: 'MASTER_KEY',
+      serverURL: 'http://localhost:3788/api'
+    };
     this.focusField = this.focusField.bind(this);
+    this.toggle = this.toggle.bind(this);
+    this.addExistApp = this.addExistApp.bind(this);
+    this.handleChangeInputText = this.handleChangeInputText.bind(this);
+    this.handleSaveClick = this.handleSaveClick.bind(this);
   }
 
   componentWillMount() {
@@ -116,9 +132,111 @@ export default class AppsIndex extends React.Component {
     }
   }
 
+  addExistApp() {
+    this.toggle();
+  }
+
+  toggle() {
+    this.setState({
+      modal: !this.state.modal
+    });
+  }
+  
+  handleSaveClick() {
+    var that = this;
+    var app = {
+      appId: this.state.appId,
+      appName: this.state.appName,
+      masterKey: this.state.masterKey,
+      serverURL: this.state.serverURL
+    }
+    console.log(app);
+    // AppsManager.addApp(app);
+    new ParseApp(app).apiRequest(
+      'GET',
+      'serverInfo',
+      {},
+      { useMasterKey: true }
+    ).then(serverInfo => {
+      app.serverInfo = serverInfo;
+      return app;
+    }, error => {
+      if (error.code === 100) {
+        app.serverInfo = {
+          error: 'unable to connect to server',
+          enabledFeatures: {},
+          parseServerVersion: "unknown"
+        }
+        return Parse.Promise.as(app);
+      } else if (error.code === 107) {
+        app.serverInfo = {
+          error: 'server version too low',
+          enabledFeatures: {},
+          parseServerVersion: "unknown"
+        }
+        return Parse.Promise.as(app);
+      } else {
+        app.serverInfo = {
+          error: error.message || 'unknown error',
+          enabledFeatures: {},
+          parseServerVersion: "unknown"
+        }
+        return Parse.Promise.as(app);
+      }
+    })
+    .then(app => {
+      AppsManager.addApp(app);
+      that.forceUpdate();
+      that.setState({
+        modal: false,
+        appName: '',
+        appId: '',
+        masterKey: '',
+        serverURL: ''
+      });
+    });
+  }
+
+  handleChangeInputText(event) {
+    const target = event.target;
+    const value = target.type === 'checkbox' ? target.checked : target.value;
+    const name = target.name;
+
+    this.setState({
+      [name]: value
+    });
+  }
+
   render() {
     let search = this.state.search.toLowerCase();
     let apps = AppsManager.apps();
+    let modal = <Modal isOpen={this.state.modal} toggle={this.toggle} className="modal-lg">
+            <ModalHeader toggle={this.toggle}>Add exist app</ModalHeader>
+            <ModalBody>
+              <Form>
+                <FormGroup>
+                  <Label for="serverURL">Server URL</Label>
+                  <Input type="text" name="serverURL" id="serverURL" value={this.state.serverURL} onChange={this.handleChangeInputText} placeholder="Server URL, e.g: http://192.168.1.30:1337/parse-salekit" />
+                </FormGroup>
+                <FormGroup>
+                  <Label for="appName">Application name</Label>
+                  <Input type="text" name="appName" id="appName" value={this.state.appName} onChange={this.handleChangeInputText} placeholder="Input Application Name"/>
+                </FormGroup>
+                <FormGroup>
+                  <Label for="appId">Application ID</Label>
+                  <Input type="text" name="appId" id="appId" value={this.state.appId} onChange={this.handleChangeInputText} placeholder="Input Application ID" />
+                </FormGroup>
+                <FormGroup>
+                  <Label for="masterKey">Master Key</Label>
+                  <Input type="text" name="masterKey" id="masterKey" value={this.state.masterKey} onChange={this.handleChangeInputText} placeholder="Input Master Key" />
+                </FormGroup>
+              </Form>
+            </ModalBody>
+            <ModalFooter>
+              <Button color="secondary" onClick={this.toggle}>Cancel</Button>{' '}
+              <Button color="primary" onClick={this.handleSaveClick}>Save</Button>
+            </ModalFooter>
+          </Modal>
     if (apps.length === 0) {
       return (
         <div className={styles.empty}>
@@ -127,7 +245,9 @@ export default class AppsIndex extends React.Component {
               <Icon width={110} height={110} name='cloud-surprise' fill='#1e3b4d' />
             </div>
             <div className={styles.alert}>You don't have any apps</div>
+            <Button color="primary" onClick={this.addExistApp}>Add exist app!</Button>
           </div>
+          {modal}
         </div>
       );
     }
@@ -140,8 +260,10 @@ export default class AppsIndex extends React.Component {
         Upgrade to the <a href='https://www.npmjs.com/package/parse-dashboard' target='_blank'>latest version</a> of Parse Dashboard to get access to: {joinWithFinal('', newFeaturesNodes, ', ', ' and ')}.
       </FlowFooter>
     }
+
     return (
       <div className={styles.index}>
+        <Button color="primary" onClick={this.addExistApp}>Add exist app!</Button>
         <div className={styles.header}>
           <Icon width={18} height={18} name='search-outline' fill='#788c97' />
           <input
@@ -159,6 +281,7 @@ export default class AppsIndex extends React.Component {
           )}
         </ul>
         {upgradePrompt}
+        {modal}
       </div>
     );
   }
